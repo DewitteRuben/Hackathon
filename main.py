@@ -58,11 +58,15 @@ while True:
     # Save the annotated frame to a file
     retval, buffer = cv2.imencode('.jpg', annotated_frame)
     jpg_as_text = base64.b64encode(buffer.tobytes())
+    
+    x1, y1, x2, y2 = box 
+    centroid = [int((x1 + x2) / 2), int((y1 + y2) / 2)]
 
     # Create message with banana count and timestamp
     message = {
         'count': count,
-        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'centroid': centroid,
     }
     
     print(f"Sending: {message}")
