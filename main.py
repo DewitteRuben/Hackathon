@@ -26,11 +26,11 @@ except Exception as e:
     print(f"Connection failed: {e}")
     exit(1)
 
+cap = cv2.VideoCapture(0)
+
 while True:
     # Capture new picture each time
-    cap = cv2.VideoCapture(0)
     ret, frame = cap.read()
-    cap.release()  # Release the camera immediately after capturing
     
     if not ret:
         print("Failed to capture image")
@@ -45,13 +45,12 @@ while True:
     centroids = []
     if detections.class_id is not None:
         for i, class_id in enumerate(detections.class_id):
-            if model.names[class_id] == 'banana':
-                count += 1
-                box = detections.xyxy[i]
-                x1, y1, x2, y2 = box
-                centroid = [int((x1 + x2) / 2), int((y1 + y2) / 2)]
-                centroids.append(centroid)
-    
+            count += 1
+            box = detections.xyxy[i]
+            x1, y1, x2, y2 = box
+            centroid = [int((x1 + x2) / 2), int((y1 + y2) / 2)]
+            centroids.append(centroid)
+
     if detections.class_id is not None and detections.confidence is not None:
         labels = [f"{model.names[class_id]} {confidence:0.2f}" for class_id, confidence in zip(detections.class_id, detections.confidence)]
     else:
@@ -61,10 +60,11 @@ while True:
     annotated_frame = label_annotator.annotate(scene=annotated_frame, detections=detections, labels=labels)
     
     retval, buffer = cv2.imencode('.jpg', annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-    jpg_as_text = base64.b64encode(buffer.tobytes())
+    jpg_as_text = base64.b64encode(buffer.tobytes()).decode('utf-8')
     
     message = {
-        'count': count,
+        'image': jpg_as_text,
+        'count': len(detections),
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'centroid': centroids,
     }
@@ -74,4 +74,5 @@ while True:
     except Exception as e:
         print(f"Error sending message: {e}")
         cv2.destroyAllWindows()
+        cap.release()
         sio.disconnect()
