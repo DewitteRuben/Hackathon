@@ -29,6 +29,20 @@ def reconnect_camera():
     cap = initialize_camera()
     print("Camera reconnected successfully")
 
+def reconnect_socket():
+    global sio
+    print("Attempting to reconnect socket...")
+    try:
+        if sio.connected:
+            sio.disconnect()
+        time.sleep(1)  # Wait a bit before reconnecting
+        sio.connect('http://192.168.178.135:3000', wait_timeout=10)
+        print("Socket reconnected successfully")
+        return True
+    except Exception as e:
+        print(f"Socket reconnection failed: {e}")
+        return False
+
 model = YOLO("yolov8n_ncnn_model")
 label_annotator = sv.LabelAnnotator()
 sio = socketio.Client()
@@ -53,6 +67,8 @@ except Exception as e:
 cap = initialize_camera()
 reconnect_attempts = 0
 max_reconnect_attempts = 3
+socket_reconnect_attempts = 0
+max_socket_reconnect_attempts = 3
 
 while True:
     # Capture new picture each time
@@ -114,8 +130,17 @@ while True:
     
     try:
         sio.emit('message', message)
+        # Reset socket reconnect attempts on successful send
+        socket_reconnect_attempts = 0
     except Exception as e:
         print(f"Error sending message: {e}")
-        cv2.destroyAllWindows()
-        cap.release()
-        sio.disconnect()
+        if socket_reconnect_attempts < max_socket_reconnect_attempts:
+            socket_reconnect_attempts += 1
+            if reconnect_socket():
+                continue
+        else:
+            print("Max socket reconnection attempts reached. Exiting...")
+            cv2.destroyAllWindows()
+            cap.release()
+            sio.disconnect()
+            break
