@@ -7,6 +7,7 @@ from datetime import datetime
 import time
 
 model = YOLO("yolov8s.pt")
+exported_model =model.export(format="ncnn")
 label_annotator = sv.LabelAnnotator()
 sio = socketio.Client()
 
@@ -40,12 +41,17 @@ while True:
     result = model(frame)[0]
     detections = sv.Detections.from_ultralytics(result)
     
-    # Count only bananas
+    # Count bananas and get their centroids
     count = 0
+    centroids = []
     if detections.class_id is not None:
-        for class_id in detections.class_id:
+        for i, class_id in enumerate(detections.class_id):
             if model.names[class_id] == 'banana':
                 count += 1
+                box = detections.xyxy[i]
+                x1, y1, x2, y2 = box
+                centroid = [int((x1 + x2) / 2), int((y1 + y2) / 2)]
+                centroids.append(centroid)
     
     if detections.class_id is not None and detections.confidence is not None:
         labels = [f"{model.names[class_id]} {confidence:0.2f}" for class_id, confidence in zip(detections.class_id, detections.confidence)]
@@ -59,9 +65,6 @@ while True:
     retval, buffer = cv2.imencode('.jpg', annotated_frame)
     jpg_as_text = base64.b64encode(buffer.tobytes())
     
-    x1, y1, x2, y2 = box 
-    centroid = [int((x1 + x2) / 2), int((y1 + y2) / 2)]
-
     # Create message with banana count and timestamp
     message = {
         'count': count,
