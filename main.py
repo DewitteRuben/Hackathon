@@ -33,12 +33,26 @@ def reconnect_socket():
     global sio
     print("Attempting to reconnect socket...")
     try:
-        if sio.connected:
-            sio.disconnect()
-        time.sleep(1)  # Wait a bit before reconnecting
-        sio.connect('http://192.168.178.135:3000', wait_timeout=10)
-        print("Socket reconnected successfully")
-        return True
+        # First check if we're actually disconnected
+        if not sio.connected:
+            # If we're not connected, try to connect
+            sio.connect('http://192.168.178.135:3000', wait_timeout=10)
+            print("Socket reconnected successfully")
+            return True
+        else:
+            # If we're already connected, try to emit a test message
+            try:
+                sio.emit('test_connection', {'test': True})
+                print("Socket is already connected and working")
+                return True
+            except Exception as e:
+                # If test message fails, force disconnect and reconnect
+                print("Socket appears connected but test failed, forcing reconnection...")
+                sio.disconnect()
+                time.sleep(1)  # Wait a bit before reconnecting
+                sio.connect('http://192.168.178.135:3000', wait_timeout=10)
+                print("Socket reconnected successfully")
+                return True
     except Exception as e:
         print(f"Socket reconnection failed: {e}")
         return False
@@ -66,9 +80,9 @@ except Exception as e:
 # Initialize camera
 cap = initialize_camera()
 reconnect_attempts = 0
-max_reconnect_attempts = 3
+max_reconnect_attempts = 10000
 socket_reconnect_attempts = 0
-max_socket_reconnect_attempts = 3
+max_socket_reconnect_attempts = 10000
 
 while True:
     # Capture new picture each time
@@ -91,12 +105,21 @@ while True:
     detections = sv.Detections.from_ultralytics(result)
         
     if detections.class_id is not None:
-        if 'banana' in model.names.values():
-            banana_class_id = list(model.names.keys())[list(model.names.values()).index('banana')]
-            banana_mask = detections.class_id == banana_class_id
-            detections = detections[banana_mask]
-        else:
-            print("Warning: 'banana' class not found in model")
+        # Check if 'banana' and 'bird' exist in model names
+        target_classes = ['banana', 'bird']
+        valid_detections = []
+        
+        for class_name in target_classes:
+            if class_name in model.names.values():
+                class_id = list(model.names.keys())[list(model.names.values()).index(class_name)]
+                class_mask = detections.class_id == class_id
+                valid_detections.append(detections[class_mask])
+            else:
+                print(f"Warning: '{class_name}' class not found in model")
+        
+        if valid_detections:
+            # Combine all valid detections
+            detections = sv.Detections.merge(valid_detections)
     
     if detections.class_id is not None and detections.confidence is not None:
         labels = [f"{model.names[class_id]} {confidence:0.2f}" for class_id, confidence in zip(detections.class_id, detections.confidence)]
@@ -118,7 +141,7 @@ while True:
     else:
         led.off()
 
-    retval, buffer = cv2.imencode('.jpg', actual_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    retval, buffer = cv2.imencode('.jpg', actual_frame, [cv2.IMWRITE_JPEG_QUALITY, 60])
     jpg_as_text = base64.b64encode(buffer.tobytes()).decode('utf-8')
     
     timestamp = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
@@ -137,6 +160,11 @@ while True:
         if socket_reconnect_attempts < max_socket_reconnect_attempts:
             socket_reconnect_attempts += 1
             if reconnect_socket():
+                # After successful reconnection, continue with the next frame
+                continue
+            else:
+                print(f"Socket reconnection attempt {socket_reconnect_attempts} failed")
+                # Even if reconnection fails, continue with the next frame
                 continue
         else:
             print("Max socket reconnection attempts reached. Exiting...")
