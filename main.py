@@ -5,6 +5,14 @@ import socketio
 import base64
 from datetime import datetime, timezone
 import time
+from gpiozero import LED, Button
+from signal import pause
+
+led = LED(17)  # GPIO17 (physical pin 11)
+button = Button(26)  # GPIO26 (physical pin 37)
+
+# Flag to control label display
+show_labels = True
 
 model = YOLO("yolov8n_ncnn_model")
 label_annotator = sv.LabelAnnotator()
@@ -54,10 +62,22 @@ while True:
     else:
         labels = []
     
-    annotated_frame = box_annotator.annotate(scene=frame.copy(), detections=detections)
-    annotated_frame = label_annotator.annotate(scene=annotated_frame, detections=detections, labels=labels)
+    def button_pressed():
+        global show_labels
+        show_labels = not show_labels
+        print(f"Button pressed! Labels display: {show_labels}")
+
+    button.when_pressed = button_pressed
     
-    retval, buffer = cv2.imencode('.jpg', annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    actual_frame = frame.copy()
+    if show_labels:
+        led.on()
+        actual_frame = box_annotator.annotate(scene=actual_frame, detections=detections)
+        actual_frame = label_annotator.annotate(scene=actual_frame, detections=detections, labels=labels)
+    else:
+        led.off()
+
+    retval, buffer = cv2.imencode('.jpg', actual_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
     jpg_as_text = base64.b64encode(buffer.tobytes()).decode('utf-8')
     
     timestamp = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
