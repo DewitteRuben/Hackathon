@@ -6,8 +6,7 @@ import base64
 from datetime import datetime
 import time
 
-model = YOLO("yolov8s.pt")
-exported_model =model.export(format="ncnn")
+model = YOLO("yolov8n_ncnn_model")
 label_annotator = sv.LabelAnnotator()
 sio = socketio.Client()
 
@@ -35,10 +34,10 @@ while True:
     
     if not ret:
         print("Failed to capture image")
-        time.sleep(20)
         continue
 
-    result = model(frame)[0]
+    # Run inference with optimized settings
+    result = model(frame, verbose=False)[0]
     detections = sv.Detections.from_ultralytics(result)
     
     # Count bananas and get their centroids
@@ -61,27 +60,18 @@ while True:
     annotated_frame = box_annotator.annotate(scene=frame.copy(), detections=detections)
     annotated_frame = label_annotator.annotate(scene=annotated_frame, detections=detections, labels=labels)
     
-    # Save the annotated frame to a file
-    retval, buffer = cv2.imencode('.jpg', annotated_frame)
+    retval, buffer = cv2.imencode('.jpg', annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
     jpg_as_text = base64.b64encode(buffer.tobytes())
     
-    # Create message with banana count and timestamp
     message = {
         'count': count,
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'centroid': centroid,
+        'centroid': centroids,
     }
     
-    print(f"Sending: {message}")
     try:
         sio.emit('message', message)
-        print("Message sent successfully")
     except Exception as e:
         print(f"Error sending message: {e}")
-    
-    # Wait for 20 seconds before next iteration
-    print("Waiting 20 seconds before next detection...")
-    time.sleep(20)
-
-cv2.destroyAllWindows()
-sio.disconnect()
+        cv2.destroyAllWindows()
+        sio.disconnect()
