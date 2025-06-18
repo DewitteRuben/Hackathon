@@ -122,7 +122,7 @@ while True:
             detections = sv.Detections.merge(valid_detections)
             
             # Filter out low confidence detections
-            confidence_threshold = 0.4
+            confidence_threshold = 0.5
             confidence_mask = detections.confidence >= confidence_threshold
             detections = detections[confidence_mask]
     
