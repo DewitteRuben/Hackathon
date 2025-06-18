@@ -14,6 +14,21 @@ button = Button(26)  # GPIO26 (physical pin 37)
 # Flag to control label display
 show_labels = True
 
+def initialize_camera():
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        raise RuntimeError("Failed to open camera")
+    return cap
+
+def reconnect_camera():
+    global cap
+    print("Attempting to reconnect camera...")
+    if cap is not None:
+        cap.release()
+    time.sleep(1)  # Wait a bit before reconnecting
+    cap = initialize_camera()
+    print("Camera reconnected successfully")
+
 model = YOLO("yolov8n_ncnn_model")
 label_annotator = sv.LabelAnnotator()
 sio = socketio.Client()
@@ -34,7 +49,10 @@ except Exception as e:
     print(f"Connection failed: {e}")
     exit(1)
 
-cap = cv2.VideoCapture(0)
+# Initialize camera
+cap = initialize_camera()
+reconnect_attempts = 0
+max_reconnect_attempts = 3
 
 while True:
     # Capture new picture each time
@@ -42,14 +60,21 @@ while True:
     
     if not ret:
         print("Failed to capture image")
-        continue
+        if reconnect_attempts < max_reconnect_attempts:
+            reconnect_attempts += 1
+            reconnect_camera()
+            continue
+        else:
+            print("Max reconnection attempts reached. Exiting...")
+            break
 
-    # Run inference with optimized settings
+    # Reset reconnect attempts on successful capture
+    reconnect_attempts = 0
+
     result = model(frame, verbose=False)[0]
     detections = sv.Detections.from_ultralytics(result)
         
     if detections.class_id is not None:
-        # Check if 'banana' exists in model names
         if 'banana' in model.names.values():
             banana_class_id = list(model.names.keys())[list(model.names.values()).index('banana')]
             banana_mask = detections.class_id == banana_class_id
