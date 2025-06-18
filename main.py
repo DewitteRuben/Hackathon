@@ -8,8 +8,8 @@ import time
 from gpiozero import LED, Button
 from signal import pause
 
-led = LED(17)  # GPIO17 (physical pin 11)
-button = Button(26)  # GPIO26 (physical pin 37)
+led = LED(17) # GPIO17 (physical pin 11)
+button = Button(26) # GPIO26 (physical pin 37)
 
 # Flag to control label display
 show_labels = True
@@ -120,6 +120,11 @@ while True:
         if valid_detections:
             # Combine all valid detections
             detections = sv.Detections.merge(valid_detections)
+            
+            # Filter out low confidence detections
+            confidence_threshold = 0.4
+            confidence_mask = detections.confidence >= confidence_threshold
+            detections = detections[confidence_mask]
     
     if detections.class_id is not None and detections.confidence is not None:
         labels = [f"{model.names[class_id]} {confidence:0.2f}" for class_id, confidence in zip(detections.class_id, detections.confidence)]
@@ -153,6 +158,7 @@ while True:
     
     try:
         sio.emit('message', message)
+        time.sleep(0.5)
         # Reset socket reconnect attempts on successful send
         socket_reconnect_attempts = 0
     except Exception as e:
